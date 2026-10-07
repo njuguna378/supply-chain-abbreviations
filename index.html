@@ -59,8 +59,8 @@
                     id="btnOpenUpload"
                     class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm"
                 >
-                    <i class="ph ph-file-text text-lg"></i>
-                    Extract Document
+                    <i class="ph ph-file-xls text-lg"></i>
+                    Import Excel
                 </button>
                 <button 
                     id="btnOpenAdd"
@@ -166,23 +166,25 @@
                 <div class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 text-[#0b3b60]">
                     <i class="ph ph-upload-simple text-3xl"></i>
                 </div>
-                <h3 class="text-xl font-bold text-slate-800 mb-2">Extract from Document</h3>
+                <h3 class="text-xl font-bold text-slate-800 mb-2">Import from Excel</h3>
                 <p class="text-sm text-slate-500 mb-6 px-4">
-                    Upload a PDF or Word document. Our mock Hugging Face model integration will extract supply chain abbreviations.
+                    Upload an Excel spreadsheet with abbreviations in column A and their full definitions in column B. The first row is treated as a header; only the first worksheet is imported.
                 </p>
-                <div id="dropZone" class="w-full border-2 border-dashed border-slate-300 rounded-xl p-8 mb-6 hover:bg-slate-50 hover:border-blue-300 transition-colors cursor-pointer group">
-                    <p class="text-sm text-slate-600 font-medium group-hover:text-blue-600">Click to browse or drag & drop</p>
-                    <p class="text-xs text-slate-400 mt-2">.pdf, .doc, .docx (Max 10MB)</p>
+                <div id="dropZone" class="w-full border-2 border-dashed border-slate-300 rounded-xl p-8 mb-4 hover:bg-slate-50 hover:border-blue-300 transition-colors cursor-pointer group">
+                    <p class="text-sm text-slate-600 font-medium group-hover:text-blue-600">Click to browse or drag & drop an Excel file</p>
+                    <p class="text-xs text-slate-400 mt-2">.xlsx, .xls (Max 10MB)</p>
                 </div>
-                <button type="button" id="btnSimulateUpload" class="w-full py-2.5 bg-[#00a859] text-white rounded-lg font-medium hover:bg-[#008f4c] transition-colors shadow-sm">
-                    Simulate Upload & Extract
+                <input type="file" id="uploadFileInput" accept=".xlsx,.xls" class="hidden">
+                <p id="uploadError" role="alert" class="hidden text-sm text-red-600 mb-4"></p>
+                <button type="button" id="btnChooseExcel" class="w-full py-2.5 bg-[#00a859] text-white rounded-lg font-medium hover:bg-[#008f4c] transition-colors shadow-sm">
+                    Choose Excel File
                 </button>
             </div>
 
             <!-- Upload View State 2: Progress -->
             <div id="uploadProgress" class="py-8 hidden flex flex-col items-center">
                 <i class="ph ph-file-arrow-up text-5xl text-slate-300 animate-bounce mb-4"></i>
-                <h3 id="uploadStatusText" class="text-lg font-bold text-slate-800 mb-4">Uploading Document...</h3>
+                <h3 id="uploadStatusText" class="text-lg font-bold text-slate-800 mb-4">Reading spreadsheet...</h3>
                 <div class="w-full bg-slate-100 rounded-full h-2 mb-2 overflow-hidden shadow-inner">
                     <div id="uploadProgressBar" class="bg-[#0b3b60] h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
                 </div>
@@ -192,10 +194,8 @@
             <!-- Upload View State 3: Complete -->
             <div id="uploadComplete" class="py-8 hidden flex flex-col items-center">
                 <i class="ph-fill ph-check-circle text-6xl text-[#00a859] mb-4"></i>
-                <h3 class="text-lg font-bold text-slate-800 mb-2">Extraction Complete!</h3>
-                <p class="text-sm text-slate-500 mb-6">
-                    Successfully extracted terms like 'LMIS' and 'CHW' and generated their contexts.
-                </p>
+                <h3 class="text-lg font-bold text-slate-800 mb-2">Import Complete</h3>
+                <p id="uploadSummary" class="text-sm text-slate-500 mb-6"></p>
                 <button type="button" class="close-modal-btn w-full py-2.5 bg-slate-100 text-slate-800 rounded-lg font-medium hover:bg-slate-200 transition-colors border border-slate-200">
                     View Dictionary
                 </button>
@@ -207,8 +207,7 @@
         import { firebaseConfig } from "./config.js";
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-        import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-
+        import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
         // Global variables & Config
         const appId = 'insupply-health-abbr-app';
         
@@ -241,8 +240,11 @@
             
             // Upload Elements
             btnOpenUpload: document.getElementById('btnOpenUpload'),
-            btnSimulateUpload: document.getElementById('btnSimulateUpload'),
+            btnChooseExcel: document.getElementById('btnChooseExcel'),
+            uploadFileInput: document.getElementById('uploadFileInput'),
             dropZone: document.getElementById('dropZone'),
+            uploadError: document.getElementById('uploadError'),
+            uploadSummary: document.getElementById('uploadSummary'),
             viewIdle: document.getElementById('uploadIdle'),
             viewProgress: document.getElementById('uploadProgress'),
             viewComplete: document.getElementById('uploadComplete'),
@@ -448,70 +450,110 @@
             }
         }
 
-        function startSimulatedUpload() {
+        async function importExcelFile(file) {
+            if (!file) return;
+            DOM.uploadError.classList.add('hidden');
+            DOM.uploadError.textContent = '';
+
+            if (!/\.(xlsx|xls)$/i.test(file.name)) {
+                showUploadError("Choose an Excel workbook in .xlsx or .xls format.");
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                showUploadError("The Excel file must be 10 MB or smaller.");
+                return;
+            }
+            if (!currentUser) {
+                showUploadError("The database connection is not ready. Please try again once the dictionary has loaded.");
+                return;
+            }
+
             DOM.viewIdle.classList.add('hidden');
             DOM.viewProgress.classList.remove('hidden');
             DOM.viewProgress.classList.add('flex');
-            
-            let progress = 0;
-            DOM.progressBar.style.width = '0%';
-            DOM.statusText.innerText = "Uploading Document...";
-            DOM.progressDetail.innerText = "0% Complete";
+            DOM.progressBar.style.width = '10%';
+            DOM.statusText.innerText = "Reading spreadsheet...";
+            DOM.progressDetail.innerText = file.name;
 
-            const interval = setInterval(() => {
-                progress += Math.floor(Math.random() * 15) + 10;
-                if (progress >= 100) progress = 100;
-                
-                DOM.progressBar.style.width = `${progress}%`;
-                DOM.progressDetail.innerText = `${progress}% Complete`;
-
-                if (progress === 100) {
-                    clearInterval(interval);
-                    
-                    setTimeout(() => {
-                        DOM.statusText.innerText = "Extracting Abbreviations...";
-                        DOM.progressDetail.innerText = "AI processing document via Hugging Face mock...";
-                        DOM.progressBar.parentElement.classList.add('animate-pulse');
-                        
-                        setTimeout(() => simulateExtractionProcessing(), 2000);
-                    }, 500);
-                }
-            }, 300);
-        }
-
-        async function simulateExtractionProcessing() {
-            const mockData = [
-                { abbr: 'LMIS', definition: 'Logistics Management Information System' },
-                { abbr: 'CHW', definition: 'Community Health Worker' }
-            ];
-            
-            const collectionPath = collection(db, 'artifacts', appId, 'public', 'data', 'abbreviations');
-            
+            let savedCount = 0;
             try {
-                for(let item of mockData) {
-                    // Check if exists
-                    const exists = abbreviationsData.some(a => a.abbr === item.abbr);
-                    if(!exists) {
-                        const meaning = await generateMeaningWithAI(item.abbr, item.definition);
-                        await addDoc(collectionPath, {
+                const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+                const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                if (!firstSheetName) {
+                    throw new Error("The workbook does not contain a worksheet.");
+                }
+
+                const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {
+                    header: 1,
+                    defval: '',
+                    raw: false
+                });
+                if (rows.length < 2) {
+                    throw new Error("The worksheet has no data rows after the header.");
+                }
+
+                const seenAbbreviations = new Set(
+                    abbreviationsData.map(item => (item.abbr || '').trim().toUpperCase())
+                );
+                const importRows = [];
+                let skippedCount = 0;
+
+                for (const row of rows.slice(1)) {
+                    const abbr = String(row[0] ?? '').trim().toUpperCase();
+                    const definition = String(row[1] ?? '').trim();
+                    if (!abbr || !definition || seenAbbreviations.has(abbr)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    seenAbbreviations.add(abbr);
+                    importRows.push({ abbr, definition });
+                }
+
+                DOM.statusText.innerText = "Saving abbreviations...";
+                DOM.progressBar.style.width = '30%';
+                DOM.progressDetail.innerText = `${importRows.length} valid row(s) found`;
+                const collectionPath = collection(db, 'artifacts', appId, 'public', 'data', 'abbreviations');
+
+                for (let start = 0; start < importRows.length; start += 450) {
+                    const batch = writeBatch(db);
+                    const chunk = importRows.slice(start, start + 450);
+                    for (const item of chunk) {
+                        batch.set(doc(collectionPath), {
                             abbr: item.abbr,
                             definition: item.definition,
-                            meaning: meaning,
+                            meaning: '',
                             createdAt: new Date().toISOString(),
-                            createdBy: 'system-extraction'
+                            createdBy: currentUser.uid
                         });
                     }
+                    await batch.commit();
+                    savedCount += chunk.length;
+                    const percent = 30 + Math.round((savedCount / importRows.length) * 70);
+                    DOM.progressBar.style.width = `${percent}%`;
+                    DOM.progressDetail.innerText = `${savedCount} of ${importRows.length} saved`;
                 }
-                
-                // Show Complete view
+
+                DOM.uploadSummary.textContent = `${savedCount} abbreviation(s) imported. ${skippedCount} row(s) skipped because they were incomplete or already existed.`;
                 DOM.viewProgress.classList.add('hidden');
                 DOM.viewProgress.classList.remove('flex');
                 DOM.viewComplete.classList.remove('hidden');
                 DOM.viewComplete.classList.add('flex');
             } catch (err) {
-                console.error("Extraction error", err);
-                closeModals();
+                console.error("Excel import error:", err);
+                const partialMessage = savedCount
+                    ? ` ${savedCount} row(s) were saved before the error.`
+                    : '';
+                showUploadError(`${err.message || 'The spreadsheet could not be imported.'}${partialMessage}`);
             }
+        }
+
+        function showUploadError(message) {
+            DOM.viewProgress.classList.add('hidden');
+            DOM.viewProgress.classList.remove('flex');
+            DOM.viewIdle.classList.remove('hidden');
+            DOM.uploadError.textContent = message;
+            DOM.uploadError.classList.remove('hidden');
         }
 
         function setupEventListeners() {
@@ -548,9 +590,26 @@
             // Form Submit
             DOM.btnSubmitForm.addEventListener('click', handleFormSubmit);
             
-            // Upload simulation
-            DOM.btnSimulateUpload.addEventListener('click', startSimulatedUpload);
-            DOM.dropZone.addEventListener('click', startSimulatedUpload);
+            DOM.btnChooseExcel.addEventListener('click', () => DOM.uploadFileInput.click());
+            DOM.dropZone.addEventListener('click', () => DOM.uploadFileInput.click());
+            DOM.uploadFileInput.addEventListener('change', (event) => {
+                const [file] = event.target.files;
+                event.target.value = '';
+                if (file) importExcelFile(file);
+            });
+            DOM.dropZone.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                DOM.dropZone.classList.add('border-blue-400', 'bg-blue-50');
+            });
+            DOM.dropZone.addEventListener('dragleave', () => {
+                DOM.dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+            });
+            DOM.dropZone.addEventListener('drop', (event) => {
+                event.preventDefault();
+                DOM.dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+                const [file] = event.dataTransfer.files;
+                if (file) importExcelFile(file);
+            });
         }
 
         // Modal Helpers
@@ -581,6 +640,9 @@
             DOM.viewComplete.classList.add('hidden');
             DOM.viewComplete.classList.remove('flex');
             DOM.progressBar.parentElement.classList.remove('animate-pulse');
+            DOM.uploadError.classList.add('hidden');
+            DOM.uploadError.textContent = '';
+            DOM.uploadFileInput.value = '';
             
             DOM.uploadModal.classList.add('active');
         }
