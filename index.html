@@ -43,6 +43,10 @@
                     class="pl-9 pr-4 py-2 rounded-full text-sm text-gray-800 bg-white/10 border border-white/20 focus:bg-white focus:text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all w-64 placeholder-gray-300"
                 />
             </div>
+            <button id="btnAdminAuth" type="button" class="text-sm font-medium px-3 py-2 rounded-lg border border-white/30 hover:bg-white/10">
+                Admin sign in
+            </button>
+            <span id="adminStatus" class="hidden text-xs text-blue-100"></span>
         </div>
     </header>
 
@@ -52,22 +56,29 @@
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
             <div>
                 <h2 class="text-2xl font-bold text-slate-800">Abbreviations Hub</h2>
-                <p class="text-slate-500 text-sm mt-1">Manage and discover Health Supply Chain terminologies.</p>
+                <p class="text-slate-500 text-sm mt-1">Browse Health Supply Chain terms and suggest additions for review.</p>
             </div>
             <div class="flex gap-3 w-full sm:w-auto">
                 <button 
                     id="btnOpenUpload"
-                    class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm"
+                    class="hidden flex-1 sm:flex-none items-center justify-center gap-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm"
                 >
                     <i class="ph ph-file-xls text-lg"></i>
                     Import Excel
                 </button>
                 <button 
                     id="btnOpenAdd"
-                    class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#00a859] hover:bg-[#008f4c] text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm"
+                    class="hidden flex-1 sm:flex-none items-center justify-center gap-2 bg-[#00a859] hover:bg-[#008f4c] text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm"
                 >
                     <i class="ph ph-plus text-lg"></i>
                     Add New
+                </button>
+                <button
+                    id="btnSuggest"
+                    class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#00a859] hover:bg-[#008f4c] text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm"
+                >
+                    <i class="ph ph-lightbulb text-lg"></i>
+                    Suggest an Acronym
                 </button>
             </div>
         </div>
@@ -94,7 +105,7 @@
                             <th class="p-4 font-semibold w-32">Abbr</th>
                             <th class="p-4 font-semibold w-1/4">Full Definition</th>
                             <th class="p-4 font-semibold">AI Generated Context / Meaning</th>
-                            <th class="p-4 font-semibold w-24 text-right">Actions</th>
+                            <th id="actionsHeader" class="hidden p-4 font-semibold w-24 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="abbreviationsTableBody" class="divide-y divide-slate-100">
@@ -103,7 +114,39 @@
                 </table>
             </div>
         </div>
+
+        <section id="suggestionsPanel" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <h3 class="text-lg font-bold text-slate-800 mb-3">Pending Suggestions</h3>
+            <div id="suggestionsList" class="space-y-3"></div>
+            <p id="suggestionsEmpty" class="hidden text-sm text-slate-500">There are no pending suggestions.</p>
+        </section>
     </main>
+
+    <div id="suggestionModal" class="modal-overlay fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="modal-content bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div class="flex justify-between items-center p-5 border-b border-slate-100">
+                <h3 class="text-xl font-bold text-slate-800">Suggest an Acronym</h3>
+                <button type="button" class="close-modal-btn text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            <form id="suggestionForm" class="p-5 space-y-4">
+                <div>
+                    <label for="suggestionAbbr" class="block text-sm font-medium text-slate-700 mb-1">Acronym</label>
+                    <input id="suggestionAbbr" maxlength="40" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg" placeholder="e.g. LMIS">
+                </div>
+                <div>
+                    <label for="suggestionDefinition" class="block text-sm font-medium text-slate-700 mb-1">Full definition</label>
+                    <textarea id="suggestionDefinition" maxlength="500" rows="3" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg" placeholder="What does it stand for?"></textarea>
+                </div>
+                <p id="suggestionError" role="alert" class="hidden text-sm text-red-600"></p>
+                <p id="suggestionSuccess" role="status" class="hidden text-sm text-green-700"></p>
+                <button id="btnSubmitSuggestion" type="submit" class="w-full py-2.5 bg-[#00a859] text-white rounded-lg font-medium hover:bg-[#008f4c] disabled:opacity-60">
+                    Submit Suggestion
+                </button>
+            </form>
+        </div>
+    </div>
 
     <!-- Form Modal (Add/Edit) -->
     <div id="formModal" class="modal-overlay fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -206,14 +249,15 @@
     <script type="module">
         import { firebaseConfig } from "./config.js";
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-        import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
         // Global variables & Config
-        const appId = 'insupply-health-abbr-app';
+        const adminEmail = 'kevinnjugush95@gmail.com';
         
-        let app, auth, db;
+        let app, auth;
         let currentUser = null;
+        let isAdmin = false;
         let abbreviationsData = [];
+        let pendingSuggestions = [];
         let searchQuery = '';
 
         // DOM Elements
@@ -222,6 +266,20 @@
             emptyState: document.getElementById('emptyState'),
             tableBody: document.getElementById('abbreviationsTableBody'),
             searchInput: document.getElementById('searchInput'),
+            btnAdminAuth: document.getElementById('btnAdminAuth'),
+            adminStatus: document.getElementById('adminStatus'),
+            actionsHeader: document.getElementById('actionsHeader'),
+            suggestionsPanel: document.getElementById('suggestionsPanel'),
+            suggestionsList: document.getElementById('suggestionsList'),
+            suggestionsEmpty: document.getElementById('suggestionsEmpty'),
+            btnSuggest: document.getElementById('btnSuggest'),
+            suggestionModal: document.getElementById('suggestionModal'),
+            suggestionForm: document.getElementById('suggestionForm'),
+            suggestionAbbr: document.getElementById('suggestionAbbr'),
+            suggestionDefinition: document.getElementById('suggestionDefinition'),
+            suggestionError: document.getElementById('suggestionError'),
+            suggestionSuccess: document.getElementById('suggestionSuccess'),
+            btnSubmitSuggestion: document.getElementById('btnSubmitSuggestion'),
             
             // Modals
             formModal: document.getElementById('formModal'),
@@ -260,44 +318,93 @@
             try {
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
-                db = getFirestore(app);
-
                 await setupAuth();
+                await loadAbbreviations();
+                window.setInterval(() => {
+                    if (document.visibilityState !== 'visible') return;
+                    loadAbbreviations();
+                    if (isAdmin) loadSuggestions();
+                }, 60000);
             } catch (err) {
                 console.error("Initialization error:", err);
-                showLoadingError("Could not connect to Firebase. Check the Firebase configuration and Authentication setup.");
+                showLoadingError("Could not load the app. Check the Firebase configuration and Vercel API setup.");
             }
         }
 
         async function setupAuth() {
-            await signInAnonymously(auth);
-
             onAuthStateChanged(auth, (user) => {
                 currentUser = user;
-                if (user) {
-                    startDataListener();
+                isAdmin = Boolean(
+                    user &&
+                    user.email &&
+                    user.email.toLowerCase() === adminEmail &&
+                    user.emailVerified &&
+                    user.providerData.some(provider => provider.providerId === 'google.com')
+                );
+                updateAccessUI();
+                if (isAdmin) {
+                    loadSuggestions();
                 } else {
-                    showLoadingError("You are not signed in. Refresh the page to reconnect.");
+                    pendingSuggestions = [];
+                    DOM.suggestionsPanel.classList.add('hidden');
+                    renderSuggestions();
                 }
             });
         }
 
-        function startDataListener() {
-            if (!currentUser) return;
-            const collectionPath = collection(db, 'artifacts', appId, 'public', 'data', 'abbreviations');
-            
-            onSnapshot(collectionPath, (snapshot) => {
-                abbreviationsData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                
+        async function loadAbbreviations() {
+            try {
+                const result = await apiRequest('/api/abbreviations');
+                abbreviationsData = result.items;
                 DOM.loadingState.style.display = 'none';
                 renderTable();
-            }, (error) => {
-                console.error("Firestore listen error:", error);
-                showLoadingError("Could not load abbreviations. Check your Firestore database and security rules.");
+            } catch (error) {
+                console.error("Dictionary load error:", error);
+                showLoadingError(error.message || "Could not load the dictionary.");
+            }
+        }
+
+        async function apiRequest(url, { method = 'GET', body, admin = false } = {}) {
+            const headers = { 'Content-Type': 'application/json' };
+            if (admin) {
+                if (!currentUser || !isAdmin) throw new Error("Admin sign-in is required for this action.");
+                headers.Authorization = `Bearer ${await currentUser.getIdToken()}`;
+            }
+            const response = await fetch(url, {
+                method,
+                headers,
+                ...(body === undefined ? {} : { body: JSON.stringify(body) })
             });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(result.error || `Request failed (${response.status}).`);
+            }
+            return result;
+        }
+
+        function updateAccessUI() {
+            DOM.btnAdminAuth.textContent = isAdmin ? 'Sign out' : currentUser ? 'Switch Google account' : 'Admin sign in';
+            DOM.adminStatus.textContent = isAdmin
+                ? `Admin: ${currentUser.email}`
+                : currentUser ? 'Signed-in account has no admin access' : '';
+            DOM.adminStatus.classList.toggle('hidden', !currentUser);
+            DOM.btnOpenAdd.classList.toggle('hidden', !isAdmin);
+            DOM.btnOpenUpload.classList.toggle('hidden', !isAdmin);
+            DOM.actionsHeader.classList.toggle('hidden', !isAdmin);
+            DOM.suggestionsPanel.classList.toggle('hidden', !isAdmin);
+            renderTable();
+        }
+
+        async function loadSuggestions() {
+            try {
+                const result = await apiRequest('/api/suggestions', { admin: true });
+                pendingSuggestions = result.items;
+                renderSuggestions();
+            } catch (error) {
+                console.error("Suggestion load error:", error);
+                DOM.suggestionsList.textContent = error.message || "Could not load suggestions.";
+                DOM.suggestionsEmpty.classList.add('hidden');
+            }
         }
 
         function showLoadingError(message) {
@@ -334,6 +441,17 @@
                     const safeAbbr = escapeHTML(item.abbr);
                     const safeDef = escapeHTML(item.definition);
                     const safeMeaning = escapeHTML(item.meaning || 'No context provided.');
+                    const actions = isAdmin ? `
+                        <td class="p-4 align-top text-right">
+                            <div class="flex justify-end gap-1">
+                                <button data-action="edit" data-id="${escapeHTML(item.id)}" class="p-2 text-slate-400 hover:text-[#0b3b60] hover:bg-blue-50 rounded-md" title="Edit">
+                                    <i class="ph ph-pencil-simple text-lg pointer-events-none"></i>
+                                </button>
+                                <button data-action="delete" data-id="${escapeHTML(item.id)}" class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md" title="Delete">
+                                    <i class="ph ph-trash text-lg pointer-events-none"></i>
+                                </button>
+                            </div>
+                        </td>` : '';
 
                     row.innerHTML = `
                         <td class="p-4 align-top">
@@ -343,20 +461,44 @@
                         </td>
                         <td class="p-4 align-top font-medium text-slate-800">${safeDef}</td>
                         <td class="p-4 align-top text-slate-600 text-sm leading-relaxed max-w-lg whitespace-pre-wrap">${safeMeaning}</td>
-                        <td class="p-4 align-top text-right">
-                            <div class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button data-action="edit" data-id="${item.id}" class="p-2 text-slate-400 hover:text-[#0b3b60] hover:bg-blue-50 rounded-md transition-colors" title="Edit">
-                                    <i class="ph ph-pencil-simple text-lg pointer-events-none"></i>
-                                </button>
-                                <button data-action="delete" data-id="${item.id}" class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete">
-                                    <i class="ph ph-trash text-lg pointer-events-none"></i>
-                                </button>
-                            </div>
-                        </td>
+                        ${actions}
                     `;
                     DOM.tableBody.appendChild(row);
                 });
             }
+        }
+
+        function renderSuggestions() {
+            DOM.suggestionsList.innerHTML = '';
+            DOM.suggestionsEmpty.classList.toggle('hidden', pendingSuggestions.length > 0);
+            pendingSuggestions.forEach(item => {
+                const card = document.createElement('article');
+                card.className = 'border border-slate-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3';
+                const details = document.createElement('div');
+                const title = document.createElement('p');
+                title.className = 'font-semibold text-slate-800';
+                title.textContent = item.abbr;
+                const definition = document.createElement('p');
+                definition.className = 'text-sm text-slate-600';
+                definition.textContent = item.definition;
+                details.append(title, definition);
+
+                const actions = document.createElement('div');
+                actions.className = 'flex gap-2 shrink-0';
+                [['approve', 'Add to dictionary'], ['reject', 'Dismiss']].forEach(([action, label]) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.dataset.action = action;
+                    button.dataset.id = item.id;
+                    button.className = action === 'approve'
+                        ? 'px-3 py-2 text-sm bg-[#00a859] text-white rounded-lg hover:bg-[#008f4c]'
+                        : 'px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200';
+                    button.textContent = label;
+                    actions.appendChild(button);
+                });
+                card.append(details, actions);
+                DOM.suggestionsList.appendChild(card);
+            });
         }
 
         async function generateMeaningWithAI(abbr, definition) {
@@ -392,7 +534,10 @@
 
         async function handleFormSubmit(e) {
             e.preventDefault();
-            if (!currentUser) return;
+            if (!isAdmin) {
+                alert("Sign in with the authorized admin account to manage abbreviations.");
+                return;
+            }
             
             const id = DOM.formId.value;
             const abbr = DOM.formAbbr.value.trim().toUpperCase();
@@ -408,45 +553,37 @@
                 meaning = await generateMeaningWithAI(abbr, definition);
             }
 
-            const collectionPath = collection(db, 'artifacts', appId, 'public', 'data', 'abbreviations');
-
             try {
-                if (id) {
-                    // Update
-                    const docRef = doc(collectionPath, id);
-                    await updateDoc(docRef, {
-                        abbr,
-                        definition,
-                        meaning,
-                        updatedAt: new Date().toISOString()
-                    });
-                } else {
-                    // Add
-                    await addDoc(collectionPath, {
-                        abbr,
-                        definition,
-                        meaning,
-                        createdAt: new Date().toISOString(),
-                        createdBy: currentUser.uid
-                    });
-                }
+                const result = await apiRequest('/api/abbreviations', {
+                    method: 'POST',
+                    admin: true,
+                    body: { operation: id ? 'update' : 'create', id, item: { abbr, definition, meaning } }
+                });
+                abbreviationsData = result.items;
+                renderTable();
                 closeModals();
             } catch (err) {
                 console.error("Error saving document:", err);
-                alert("An error occurred while saving.");
+                alert(err.message || "An error occurred while saving.");
             } finally {
                 setFormLoading(false);
             }
         }
 
         async function handleDelete(id) {
-            if (!currentUser) return;
+            if (!isAdmin) return;
             try {
-                // Direct deletion for smooth experience in canvas (usually confirm dialog is good)
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'abbreviations', id);
-                await deleteDoc(docRef);
+                if (!confirm(`Delete ${id} from the dictionary?`)) return;
+                const result = await apiRequest('/api/abbreviations', {
+                    method: 'DELETE',
+                    admin: true,
+                    body: { id }
+                });
+                abbreviationsData = result.items;
+                renderTable();
             } catch (err) {
-                console.error("Error deleting:", err);
+                console.error("Error deleting abbreviation:", err);
+                alert(err.message || "Could not delete this abbreviation.");
             }
         }
 
@@ -463,8 +600,8 @@
                 showUploadError("The Excel file must be 10 MB or smaller.");
                 return;
             }
-            if (!currentUser) {
-                showUploadError("The database connection is not ready. Please try again once the dictionary has loaded.");
+            if (!isAdmin) {
+                showUploadError("Sign in with the authorized admin account to import abbreviations.");
                 return;
             }
 
@@ -475,7 +612,6 @@
             DOM.statusText.innerText = "Reading spreadsheet...";
             DOM.progressDetail.innerText = file.name;
 
-            let savedCount = 0;
             try {
                 const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
                 const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
@@ -493,58 +629,41 @@
                     throw new Error("The worksheet has no data rows after the header.");
                 }
 
-                const seenAbbreviations = new Set(
-                    abbreviationsData.map(item => (item.abbr || '').trim().toUpperCase())
-                );
                 const importRows = [];
                 let skippedCount = 0;
 
                 for (const row of rows.slice(1)) {
                     const abbr = String(row[0] ?? '').trim().toUpperCase();
                     const definition = String(row[1] ?? '').trim();
-                    if (!abbr || !definition || seenAbbreviations.has(abbr)) {
+                    const meaning = String(row[2] ?? '').trim();
+                    if (!abbr || !definition) {
                         skippedCount++;
                         continue;
                     }
-                    seenAbbreviations.add(abbr);
-                    importRows.push({ abbr, definition });
+                    importRows.push({ abbr, definition, meaning });
                 }
 
                 DOM.statusText.innerText = "Saving abbreviations...";
                 DOM.progressBar.style.width = '30%';
                 DOM.progressDetail.innerText = `${importRows.length} valid row(s) found`;
-                const collectionPath = collection(db, 'artifacts', appId, 'public', 'data', 'abbreviations');
+                const result = await apiRequest('/api/abbreviations', {
+                    method: 'POST',
+                    admin: true,
+                    body: { operation: 'import', items: importRows }
+                });
+                DOM.progressBar.style.width = '100%';
+                DOM.progressDetail.innerText = `${result.added} imported`;
+                abbreviationsData = result.items;
+                renderTable();
 
-                for (let start = 0; start < importRows.length; start += 450) {
-                    const batch = writeBatch(db);
-                    const chunk = importRows.slice(start, start + 450);
-                    for (const item of chunk) {
-                        batch.set(doc(collectionPath), {
-                            abbr: item.abbr,
-                            definition: item.definition,
-                            meaning: '',
-                            createdAt: new Date().toISOString(),
-                            createdBy: currentUser.uid
-                        });
-                    }
-                    await batch.commit();
-                    savedCount += chunk.length;
-                    const percent = 30 + Math.round((savedCount / importRows.length) * 70);
-                    DOM.progressBar.style.width = `${percent}%`;
-                    DOM.progressDetail.innerText = `${savedCount} of ${importRows.length} saved`;
-                }
-
-                DOM.uploadSummary.textContent = `${savedCount} abbreviation(s) imported. ${skippedCount} row(s) skipped because they were incomplete or already existed.`;
+                DOM.uploadSummary.textContent = `${result.added} abbreviation(s) imported. ${result.skipped + skippedCount} row(s) skipped because they were incomplete or already existed.`;
                 DOM.viewProgress.classList.add('hidden');
                 DOM.viewProgress.classList.remove('flex');
                 DOM.viewComplete.classList.remove('hidden');
                 DOM.viewComplete.classList.add('flex');
             } catch (err) {
                 console.error("Excel import error:", err);
-                const partialMessage = savedCount
-                    ? ` ${savedCount} row(s) were saved before the error.`
-                    : '';
-                showUploadError(`${err.message || 'The spreadsheet could not be imported.'}${partialMessage}`);
+                showUploadError(err.message || 'The spreadsheet could not be imported.');
             }
         }
 
@@ -557,6 +676,33 @@
         }
 
         function setupEventListeners() {
+            DOM.btnAdminAuth.addEventListener('click', async () => {
+                try {
+                    if (isAdmin) {
+                        await signOut(auth);
+                    } else {
+                        const provider = new GoogleAuthProvider();
+                        provider.setCustomParameters({ prompt: 'select_account' });
+                        await signInWithPopup(auth, provider);
+                    }
+                } catch (error) {
+                    console.error("Admin authentication error:", error);
+                    alert("Could not complete Google sign-in. Check that Google sign-in is enabled in Firebase Authentication and that this site is an authorized domain.");
+                }
+            });
+
+            DOM.btnSuggest.addEventListener('click', () => {
+                DOM.suggestionForm.reset();
+                DOM.suggestionError.classList.add('hidden');
+                DOM.suggestionSuccess.classList.add('hidden');
+                DOM.suggestionModal.classList.add('active');
+            });
+            DOM.suggestionForm.addEventListener('submit', handleSuggestionSubmit);
+            DOM.suggestionsList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-action]');
+                if (button) handleSuggestionAction(button.dataset.action, button.dataset.id);
+            });
+
             // Search
             DOM.searchInput.addEventListener('input', (e) => {
                 searchQuery = e.target.value;
@@ -612,6 +758,49 @@
             });
         }
 
+        async function handleSuggestionSubmit(event) {
+            event.preventDefault();
+            const abbr = DOM.suggestionAbbr.value.trim().toUpperCase();
+            const definition = DOM.suggestionDefinition.value.trim();
+            if (!abbr || !definition) return;
+
+            DOM.btnSubmitSuggestion.disabled = true;
+            DOM.suggestionError.classList.add('hidden');
+            try {
+                await apiRequest('/api/suggestions', {
+                    method: 'POST',
+                    body: { abbr, definition }
+                });
+                DOM.suggestionSuccess.textContent = "Thanks. Your suggestion has been sent for review.";
+                DOM.suggestionSuccess.classList.remove('hidden');
+                DOM.suggestionForm.reset();
+            } catch (error) {
+                console.error("Suggestion submission error:", error);
+                DOM.suggestionError.textContent = "Suggestion could not be submitted. Please try again later.";
+                DOM.suggestionError.classList.remove('hidden');
+            } finally {
+                DOM.btnSubmitSuggestion.disabled = false;
+            }
+        }
+
+        async function handleSuggestionAction(action, suggestionId) {
+            if (!isAdmin) return;
+            if (!pendingSuggestions.some(item => item.id === suggestionId)) return;
+            try {
+                const result = await apiRequest('/api/suggestions', {
+                    method: 'PATCH',
+                    admin: true,
+                    body: { id: suggestionId, action }
+                });
+                abbreviationsData = result.items;
+                renderTable();
+                await loadSuggestions();
+            } catch (error) {
+                console.error("Suggestion review error:", error);
+                alert(error.message || "Could not update this suggestion.");
+            }
+        }
+
         // Modal Helpers
         function openFormModal(item = null) {
             if (item) {
@@ -650,6 +839,7 @@
         function closeModals() {
             DOM.formModal.classList.remove('active');
             DOM.uploadModal.classList.remove('active');
+            DOM.suggestionModal.classList.remove('active');
         }
 
         function setFormLoading(isLoading) {
