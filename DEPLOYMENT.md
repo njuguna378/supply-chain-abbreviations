@@ -12,6 +12,8 @@ The dictionary is stored in `data/abbreviations.xlsx` in the connected GitHub re
 
 For local development, copy `.env.example` to `.env.local`, fill in the values, install packages with `npm install`, then run `npx vercel dev`. Never commit `.env.local` or GitHub tokens.
 
+The generated `styles.css` is committed so Vercel can serve production-ready CSS without the Tailwind CDN. If you edit `index.html` utility classes or `styles.input.css`, regenerate and commit the stylesheet with `npm run build:css`.
+
 To create a blank workbook before the first deploy, run `npm run create-template`. The script does not overwrite an existing workbook. Export the current Firestore dictionary to an Excel file and import it through the admin UI before directing users to the new app; this app does not automatically migrate Firestore data.
 
 ## Access model

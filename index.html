@@ -4,22 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InSupply Health Abbreviations</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        /* Custom scrollbar for table */
-        .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* Modal transitions */
-        .modal-overlay { transition: opacity 0.2s ease-out; opacity: 0; pointer-events: none; }
-        .modal-overlay.active { opacity: 1; pointer-events: auto; }
-        .modal-content { transition: transform 0.2s ease-out; transform: scale(0.95); }
-        .modal-overlay.active .modal-content { transform: scale(1); }
-    </style>
 </head>
 <body class="flex flex-col min-h-screen text-slate-800">
 
@@ -247,7 +234,7 @@
     </div>
 
     <script type="module">
-        import { firebaseConfig } from "./config.js";
+        import { firebaseConfig } from "/firebase-config.js";
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
         // Global variables & Config

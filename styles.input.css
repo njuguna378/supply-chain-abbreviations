@@ -1,0 +1,46 @@
+@import "tailwindcss";
+@source "./index.html";
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f8fafc;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.modal-overlay {
+    transition: opacity 0.2s ease-out;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-content {
+    transition: transform 0.2s ease-out;
+    transform: scale(0.95);
+}
+
+.modal-overlay.active .modal-content {
+    transform: scale(1);
+}
