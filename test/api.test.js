@@ -50,7 +50,7 @@ test('Vercel APIs expose the dictionary publicly and protect moderation/admin wr
         }), { status: 200 });
     };
 
-    async function adminToken(email = 'admin@example.com', provider = 'google.com') {
+    async function adminToken(email = 'admin@example.com', provider = 'password') {
         return new SignJWT({
             email,
             email_verified: true,
@@ -101,8 +101,8 @@ test('Vercel APIs expose the dictionary publicly and protect moderation/admin wr
 
         const unauthorizedSuggestionRead = await call(suggestionsHandler, 'GET', undefined, await adminToken('other@example.com'));
         assert.equal(unauthorizedSuggestionRead.statusCode, 403);
-        const nonGoogleSignIn = await call(suggestionsHandler, 'GET', undefined, await adminToken('admin@example.com', 'password'));
-        assert.equal(nonGoogleSignIn.statusCode, 403);
+        const nonPasswordSignIn = await call(suggestionsHandler, 'GET', undefined, await adminToken('admin@example.com', 'google.com'));
+        assert.equal(nonPasswordSignIn.statusCode, 403);
 
         const token = await adminToken();
         const pending = await call(suggestionsHandler, 'GET', undefined, token);

@@ -109,6 +109,34 @@
         </section>
     </main>
 
+    <div id="adminLoginModal" class="modal-overlay fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="modal-content bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div class="flex justify-between items-center p-5 border-b border-slate-100">
+                <h3 class="text-xl font-bold text-slate-800">Admin sign in</h3>
+                <button type="button" class="close-modal-btn text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            <form id="adminLoginForm" class="p-5 space-y-4">
+                <div>
+                    <label for="adminEmailInput" class="block text-sm font-medium text-slate-700 mb-1">Admin email</label>
+                    <input id="adminEmailInput" type="email" autocomplete="username" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg" placeholder="you@example.com">
+                </div>
+                <div>
+                    <label for="adminPasswordInput" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                    <input id="adminPasswordInput" type="password" autocomplete="current-password" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg" placeholder="Your password">
+                </div>
+                <p id="adminLoginMessage" role="status" class="hidden text-sm"></p>
+                <div class="flex items-center justify-between gap-3">
+                    <button id="btnResetPassword" type="button" class="text-sm text-[#0b3b60] hover:underline">Forgot password?</button>
+                    <button id="btnAdminLoginSubmit" type="submit" class="px-5 py-2.5 bg-[#0b3b60] text-white rounded-lg font-medium hover:bg-[#082a45] disabled:opacity-60">
+                        Sign in
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="suggestionModal" class="modal-overlay fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div class="modal-content bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
             <div class="flex justify-between items-center p-5 border-b border-slate-100">
@@ -236,7 +264,7 @@
     <script type="module">
         import { firebaseConfig } from "/firebase-config.js";
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
         // Global variables & Config
         const adminEmail = 'kevinnjugush95@gmail.com';
         
@@ -255,6 +283,13 @@
             searchInput: document.getElementById('searchInput'),
             btnAdminAuth: document.getElementById('btnAdminAuth'),
             adminStatus: document.getElementById('adminStatus'),
+            adminLoginModal: document.getElementById('adminLoginModal'),
+            adminLoginForm: document.getElementById('adminLoginForm'),
+            adminEmailInput: document.getElementById('adminEmailInput'),
+            adminPasswordInput: document.getElementById('adminPasswordInput'),
+            adminLoginMessage: document.getElementById('adminLoginMessage'),
+            btnResetPassword: document.getElementById('btnResetPassword'),
+            btnAdminLoginSubmit: document.getElementById('btnAdminLoginSubmit'),
             actionsHeader: document.getElementById('actionsHeader'),
             suggestionsPanel: document.getElementById('suggestionsPanel'),
             suggestionsList: document.getElementById('suggestionsList'),
@@ -326,7 +361,7 @@
                     user.email &&
                     user.email.toLowerCase() === adminEmail &&
                     user.emailVerified &&
-                    user.providerData.some(provider => provider.providerId === 'google.com')
+                    user.providerData.some(provider => provider.providerId === 'password')
                 );
                 updateAccessUI();
                 if (isAdmin) {
@@ -370,10 +405,10 @@
         }
 
         function updateAccessUI() {
-            DOM.btnAdminAuth.textContent = isAdmin ? 'Sign out' : currentUser ? 'Switch Google account' : 'Admin sign in';
+            DOM.btnAdminAuth.textContent = isAdmin ? 'Sign out' : 'Admin sign in';
             DOM.adminStatus.textContent = isAdmin
                 ? `Admin: ${currentUser.email}`
-                : currentUser ? 'Signed-in account has no admin access' : '';
+                : currentUser ? 'Admin access requires the verified admin email and password account.' : '';
             DOM.adminStatus.classList.toggle('hidden', !currentUser);
             DOM.btnOpenAdd.classList.toggle('hidden', !isAdmin);
             DOM.btnOpenUpload.classList.toggle('hidden', !isAdmin);
@@ -664,19 +699,21 @@
 
         function setupEventListeners() {
             DOM.btnAdminAuth.addEventListener('click', async () => {
-                try {
-                    if (isAdmin) {
+                if (isAdmin) {
+                    try {
                         await signOut(auth);
-                    } else {
-                        const provider = new GoogleAuthProvider();
-                        provider.setCustomParameters({ prompt: 'select_account' });
-                        await signInWithPopup(auth, provider);
+                    } catch (error) {
+                        console.error("Admin sign-out error:", error);
+                        alert("Could not sign out. Please try again.");
                     }
-                } catch (error) {
-                    console.error("Admin authentication error:", error);
-                    alert("Could not complete Google sign-in. Check that Google sign-in is enabled in Firebase Authentication and that this site is an authorized domain.");
+                } else {
+                    DOM.adminLoginForm.reset();
+                    DOM.adminLoginMessage.classList.add('hidden');
+                    DOM.adminLoginModal.classList.add('active');
                 }
             });
+            DOM.adminLoginForm.addEventListener('submit', handleAdminLogin);
+            DOM.btnResetPassword.addEventListener('click', handlePasswordReset);
 
             DOM.btnSuggest.addEventListener('click', () => {
                 DOM.suggestionForm.reset();
@@ -743,6 +780,79 @@
                 const [file] = event.dataTransfer.files;
                 if (file) importExcelFile(file);
             });
+        }
+
+        async function handleAdminLogin(event) {
+            event.preventDefault();
+            const email = DOM.adminEmailInput.value.trim();
+            const password = DOM.adminPasswordInput.value;
+            DOM.adminLoginMessage.classList.add('hidden');
+            DOM.btnAdminLoginSubmit.disabled = true;
+
+            try {
+                const credential = await signInWithEmailAndPassword(auth, email, password);
+                if (credential.user.email?.toLowerCase() !== adminEmail) {
+                    await signOut(auth);
+                    throw new Error("This email address is not authorized as the app administrator.");
+                }
+                if (!credential.user.emailVerified) {
+                    await sendEmailVerification(credential.user);
+                    await signOut(auth);
+                    setAdminLoginMessage("Your email address is not verified. We sent a verification link; verify your email, then sign in again.", true);
+                    return;
+                }
+                closeModals();
+                DOM.adminPasswordInput.value = '';
+            } catch (error) {
+                console.error("Admin email/password sign-in error:", error);
+                setAdminLoginMessage(getAuthErrorMessage(error), false);
+            } finally {
+                DOM.btnAdminLoginSubmit.disabled = false;
+            }
+        }
+
+        async function handlePasswordReset() {
+            const email = DOM.adminEmailInput.value.trim();
+            if (!email) {
+                setAdminLoginMessage("Enter your admin email first, then choose Forgot password.", false);
+                DOM.adminEmailInput.focus();
+                return;
+            }
+            try {
+                await sendPasswordResetEmail(auth, email);
+                setAdminLoginMessage("If an account exists for that email, Firebase has sent a password-reset link.", true);
+            } catch (error) {
+                console.error("Password reset request error:", error);
+                setAdminLoginMessage(getAuthErrorMessage(error), false);
+            }
+        }
+
+        function setAdminLoginMessage(message, isSuccess) {
+            DOM.adminLoginMessage.textContent = message;
+            DOM.adminLoginMessage.classList.toggle('text-green-700', isSuccess);
+            DOM.adminLoginMessage.classList.toggle('text-red-600', !isSuccess);
+            DOM.adminLoginMessage.classList.remove('hidden');
+        }
+
+        function getAuthErrorMessage(error) {
+            switch (error.code) {
+                case 'auth/invalid-credential':
+                case 'auth/wrong-password':
+                case 'auth/user-not-found':
+                    return "Email or password is incorrect. Check the credentials or reset the password.";
+                case 'auth/invalid-email':
+                    return "Enter a valid email address.";
+                case 'auth/too-many-requests':
+                    return "Sign-in is temporarily blocked after too many attempts. Wait and try again.";
+                case 'auth/network-request-failed':
+                    return "Network error while contacting Firebase Authentication. Check your connection.";
+                case 'auth/operation-not-allowed':
+                    return "Email/Password sign-in is disabled in Firebase Authentication.";
+                case 'auth/unauthorized-domain':
+                    return `This website domain (${location.hostname}) is not authorized in Firebase Authentication. Add the hostname without https:// or a path.`;
+                default:
+                    return error.message || "Could not sign in. Check the Firebase Authentication settings and try again.";
+            }
         }
 
         async function handleSuggestionSubmit(event) {
@@ -827,6 +937,7 @@
             DOM.formModal.classList.remove('active');
             DOM.uploadModal.classList.remove('active');
             DOM.suggestionModal.classList.remove('active');
+            DOM.adminLoginModal.classList.remove('active');
         }
 
         function setFormLoading(isLoading) {
